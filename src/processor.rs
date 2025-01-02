@@ -1,3 +1,5 @@
+use std::borrow::BorrowMut;
+
 use borsh::io::Error;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::clock::Clock;
@@ -47,6 +49,43 @@ pub fn add_liquidity(
 
     pool_data.total_liquidity += liquidity_data;
     pool_data.available_rewards += liquidity_data; // Add to available rewards
+
+    pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
+    msg!("Liquidity added: {}", liquidity_data);
+    Ok(())
+}
+
+pub fn remove_liquidity(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let admin_account = next_account_info(accounts_iter)?;
+    let liquidity_account = next_account_info(accounts_iter)?;
+    let pool_account = next_account_info(accounts_iter)?;
+    let token_program_id = next_account_info(accounts_iter)?;
+
+    let liquidity_data =
+        u64::from_le_bytes(instruction_data.try_into().expect("Invalid liquidity data"));
+
+    let mut pool_data = try_from_slice_unchecked::<PoolData>(*pool_account.data.borrow()).unwrap();
+
+    if admin_account.key != &pool_data.owner.parse::<Pubkey>().unwrap() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    pool_data.total_liquidity = 0;
+    pool_data.available_rewards = 0; // Add to available rewards
+                                     // Transfer liquidity tokens to the pool
+    transfer_tokens(
+        &[
+            liquidity_account.clone(),
+            admin_account.clone(),
+            token_program_id.clone(),
+            admin_account.clone(),
+        ],
+        pool_data.total_liquidity,
+    )?;
 
     pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
     msg!("Liquidity added: {}", liquidity_data);
@@ -142,14 +181,14 @@ pub fn create_stake_pool(
     let pool_account = next_account_info(accounts_iter)?;
     let program_id = next_account_info(accounts_iter)?;
 
-    if !(program_id.owner.to_string() == admin_account.key.to_string()) {
-        msg!(
-            "{}, {}",
-            program_id.owner.to_string(),
-            admin_account.key.to_string()
-        );
-        return Err((ProgramError::InvalidAccountOwner));
-    }
+    // if !(program_id.owner.to_string() == admin_account.key.to_string()) {
+    //     msg!(
+    //         "{}, {}",
+    //         program_id.owner.to_string(),
+    //         admin_account.key.to_string()
+    //     );
+    //     return Err((ProgramError::InvalidAccountOwner));
+    // }
     let mut pool_data =
         try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
 
@@ -177,13 +216,14 @@ pub fn stake_tokens(
     let staker_token_account = next_account_info(accounts_iter)?;
     let pool_owner_token_account = next_account_info(accounts_iter)?;
     let token_program_id = next_account_info(accounts_iter)?;
+    let token_address = next_account_info(accounts_iter)?;
 
     let mut pool_data =
         try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
 
     let stake_data = crate::state::StakeAmount::try_from_slice(&instruction_data)?;
 
-    if stake_data.amount > 0 {
+    if stake_data.amount > 0 && token_address.key.to_string() == pool_data.token {
         transfer_tokens(
             &[
                 staker_token_account.clone(),
@@ -195,6 +235,7 @@ pub fn stake_tokens(
         )
         .expect("transfer tokens error");
         pool_data.total_stakes.push(stake_data);
+        pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
     }
     Ok(())
 }
@@ -215,25 +256,40 @@ pub fn unstake_tokens(
     let mut pool_data =
         try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
 
-    let current_user_stake = pool_data
+    match pool_data
         .total_stakes
         .iter()
-        .find(|&i| i.user == staker_account.key.to_string())
-        .expect("UserNot found");
+        .position(|stake| stake.user == staker_account.key.to_string())
+    {
+        Some(current_user_stake_index) => {
+            // Successfully found the user's stake
+            let current_user_stake = pool_data.total_stakes[current_user_stake_index].clone();
 
-    if current_user_stake.amount != 0 {
-        transfer_tokens(
-            &[
-                admin_token_account.clone(),
-                staker_token_account.clone(),
-                token_program_id.clone(),
-                admin_account.clone(),
-            ],
-            current_user_stake.amount,
-        )
-        .expect("transfer tokens error");
+            if current_user_stake.amount != 0 {
+                // Remove the user's stake
+                pool_data.total_stakes.remove(current_user_stake_index);
+
+                // Perform the token transfer
+                transfer_tokens(
+                    &[
+                        admin_token_account.clone(),
+                        staker_token_account.clone(),
+                        token_program_id.clone(),
+                        admin_account.clone(),
+                    ],
+                    current_user_stake.amount,
+                )
+                .expect("transfer tokens error");
+
+                // Serialize the updated pool data back into the account
+                pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
+            }
+        }
+        None => {
+            // User's stake was not found
+            return Err(ProgramError::InvalidArgument); // or any appropriate error type
+        }
     }
-
     Ok(())
 }
 
