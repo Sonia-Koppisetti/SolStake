@@ -7,6 +7,9 @@ pub struct PoolData {
     pub reward_timelines: Vec<u8>,
     pub reward_percentages: Vec<u8>,
     pub total_stakes: Vec<StakeAmount>,
+    pub total_liquidity: u64,   // New field to track liquidity
+    pub available_rewards: u64, // New field to track available rewards
+    pub owner: String,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]

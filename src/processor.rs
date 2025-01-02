@@ -1,7 +1,5 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-
 use borsh::io::Error;
-use solana_program::address_lookup_table::program;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::clock::Clock;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -13,8 +11,125 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
+use spl_token;
 
-// use spl_token;
+use crate::state::PoolData;
+
+pub fn add_liquidity(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let admin_account = next_account_info(accounts_iter)?;
+    let liquidity_account = next_account_info(accounts_iter)?;
+    let pool_account = next_account_info(accounts_iter)?;
+    let token_program_id = next_account_info(accounts_iter)?;
+
+    let liquidity_data =
+        u64::from_le_bytes(instruction_data.try_into().expect("Invalid liquidity data"));
+
+    let mut pool_data = try_from_slice_unchecked::<PoolData>(*pool_account.data.borrow()).unwrap();
+
+    if admin_account.key != &pool_data.owner.parse::<Pubkey>().unwrap() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // Transfer liquidity tokens to the pool
+    transfer_tokens(
+        &[
+            admin_account.clone(),
+            liquidity_account.clone(),
+            token_program_id.clone(),
+            admin_account.clone(),
+        ],
+        liquidity_data,
+    )?;
+
+    pool_data.total_liquidity += liquidity_data;
+    pool_data.available_rewards += liquidity_data; // Add to available rewards
+
+    pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
+    msg!("Liquidity added: {}", liquidity_data);
+    Ok(())
+}
+
+pub fn calculate_rewards(pool_data: &PoolData, staker_amount: u64, staker_share: u64) -> u64 {
+    // Calculate rewards based on the staker's share in the total liquidity pool
+    let total_rewards = pool_data.available_rewards;
+    let reward_percentage = staker_share * 100 / pool_data.total_liquidity;
+
+    total_rewards * reward_percentage / 100
+}
+
+pub fn claim_rewards(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let admin_account = next_account_info(accounts_iter)?;
+    let admin_token_account = next_account_info(accounts_iter)?;
+    let staker_token_account = next_account_info(accounts_iter)?;
+    let token_program_id = next_account_info(accounts_iter)?;
+    let pool_account = next_account_info(accounts_iter)?;
+    let staker_account = next_account_info(accounts_iter)?;
+
+    let mut pool_data =
+        try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
+
+    let mut current_user_stake = pool_data
+        .total_stakes
+        .iter()
+        .find(|&i| i.user == staker_account.key.to_string())
+        .expect("UserNot found");
+
+    // Calculate reward share based on liquidity share
+    let staker_share = current_user_stake.amount * 100 / pool_data.total_liquidity;
+
+    let reward_amount = calculate_rewards(&pool_data, current_user_stake.amount, staker_share);
+
+    transfer_tokens(
+        &[
+            admin_token_account.clone(),
+            staker_token_account.clone(),
+            token_program_id.clone(),
+            admin_account.clone(),
+        ],
+        reward_amount,
+    )?;
+
+    // Reduce the available rewards in the pool
+    pool_data.available_rewards -= reward_amount;
+
+    pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
+    Ok(())
+}
+
+pub fn update_pool_rewards(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let admin_account = next_account_info(accounts_iter)?;
+    let pool_account = next_account_info(accounts_iter)?;
+
+    let reward_data = u64::from_le_bytes(instruction_data.try_into().expect("Invalid reward data"));
+
+    let mut pool_data =
+        try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
+
+    // Only allow the admin to update the reward pool
+    if admin_account.key != &pool_data.owner.parse::<Pubkey>().unwrap() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    pool_data.available_rewards += reward_data;
+
+    pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
+    msg!("Pool rewards updated: {}", reward_data);
+    Ok(())
+}
 
 pub fn create_stake_pool(
     pubkey: &Pubkey,
@@ -23,8 +138,18 @@ pub fn create_stake_pool(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let admin_account = next_account_info(accounts_iter)?;
-    let staked_token = next_account_info(accounts_iter)?;
+    let pool_owner_account = next_account_info(accounts_iter)?;
     let pool_account = next_account_info(accounts_iter)?;
+    let program_id = next_account_info(accounts_iter)?;
+
+    if !(program_id.owner.to_string() == admin_account.key.to_string()) {
+        msg!(
+            "{}, {}",
+            program_id.owner.to_string(),
+            admin_account.key.to_string()
+        );
+        return Err((ProgramError::InvalidAccountOwner));
+    }
     let mut pool_data =
         try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
 
@@ -34,6 +159,7 @@ pub fn create_stake_pool(
     pool_data.token = pool_data_.token;
     pool_data.reward_timelines = pool_data_.reward_timelines;
     pool_data.reward_percentages = pool_data_.reward_percentages;
+    pool_data.owner = pool_owner_account.owner.to_string();
 
     pool_data.serialize(&mut &mut pool_account.try_borrow_mut_data()?[..])?;
     msg!("{}", pool_data.id);
@@ -111,91 +237,6 @@ pub fn unstake_tokens(
     Ok(())
 }
 
-pub fn claim_rewards(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
-    let admin_account = next_account_info(accounts_iter)?;
-    let admin_token_account = next_account_info(accounts_iter)?;
-    let staker_token_account = next_account_info(accounts_iter)?;
-    let token_program_id = next_account_info(accounts_iter)?;
-    let pool_account = next_account_info(accounts_iter)?;
-    let staker_account = next_account_info(accounts_iter)?;
-    let mut pool_data =
-        try_from_slice_unchecked::<crate::state::PoolData>(*pool_account.data.borrow()).unwrap();
-
-    let mut current_user_stake = pool_data
-        .total_stakes
-        .iter()
-        .find(|&i| i.user == staker_account.key.to_string())
-        .expect("UserNot found");
-
-    let user_stake_start_time = current_user_stake.clone();
-    let clock = Clock::get();
-    let difference = user_stake_start_time.starts_at - clock.unwrap().unix_timestamp;
-    let difference_in_days = difference / 86400;
-
-    let claim_percentage = find_nearest_index(difference_in_days, &pool_data.reward_timelines)
-        .expect("Unable to find nearest percentage");
-
-    transfer_tokens(
-        &[
-            admin_token_account.clone(),
-            staker_token_account.clone(),
-            token_program_id.clone(),
-            admin_account.clone(),
-        ],
-        pool_data.reward_percentages[claim_percentage] as u64 * current_user_stake.amount / 100,
-    )
-    .expect("transfer tokens error");
-    Ok(())
-}
-
-pub fn create_pda_account(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-
-    let payer_account_info = next_account_info(account_info_iter)?;
-    let pda_account_info = next_account_info(account_info_iter)?;
-    let rent_sysvar_account_info = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
-
-    // find space and minimum rent required for account
-    let space = instruction_data[0];
-    let bump = instruction_data[1];
-    let rent_lamports = rent_sysvar_account_info.minimum_balance(space.into());
-
-    invoke_signed(
-        &system_instruction::create_account(
-            &payer_account_info.key,
-            &pda_account_info.key,
-            rent_lamports,
-            space.into(),
-            program_id,
-        ),
-        &[payer_account_info.clone(), pda_account_info.clone()],
-        &[&[&payer_account_info.key.as_ref(), &[bump]]],
-    )?;
-
-    Ok(())
-}
-
-fn find_nearest_index(target: i64, numbers: &[u8]) -> Option<usize> {
-    numbers
-        .iter()
-        .enumerate()
-        .min_by_key(|&(_, &value)| {
-            let diff = (value as i64) - target; // Cast `u8` to `i64`
-            diff.abs() // Get the absolute difference
-        })
-        .map(|(index, _)| index) // Return the index of the nearest number
-}
-
-/* Internal Method to transfer tokens */
 pub fn transfer_tokens(accounts: &[AccountInfo; 4], amount: u64) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let from_token_account = next_account_info(accounts_iter)?;
@@ -225,7 +266,6 @@ pub fn transfer_tokens(accounts: &[AccountInfo; 4], amount: u64) -> ProgramResul
     Ok(())
 }
 
-/* Internal Method to Deserialize Data  */
 pub fn try_from_slice_unchecked<T: BorshDeserialize>(data: &[u8]) -> Result<T, Error> {
     let mut data_mut = data;
     let result = T::deserialize(&mut data_mut)?;
