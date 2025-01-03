@@ -63,7 +63,7 @@ const schema = {
     }
 }
 
-const ProgramId = new SolanaWeb3.PublicKey('CLJAHMCmJbhvToVYxBpM2LwXp58wxDd7yf3k8gCLdHnX')
+const ProgramId = new SolanaWeb3.PublicKey('GZEcmMaW8dsGgcYtCVcDBrLijYWFQDbWdnNjDruPHqqE')
 const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'confirmed')
     const FeePayerAccount = SolanaWeb3.Keypair.fromSecretKey(new Uint8Array(
         
@@ -79,12 +79,23 @@ const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'co
             141,  38, 159, 198,  98, 130, 177,  40, 221
           ]
     )); //Need to change the staker 
+
+    const liquidity_keypair = SolanaWeb3.Keypair.fromSecretKey(new Uint8Array(
+        [
+            15,  21, 249,   9,  40,  97, 105, 179, 107,  98, 181,
+            61, 148, 189,  53, 125, 246, 100, 132, 132, 196, 203,
+            65, 180, 210, 109,  10, 199,  27,  71,  19,  43,  41,
+           112, 226,   4,  41,  21,  12,  48, 246, 196, 107, 195,
+            38, 143, 230, 105, 205, 185, 171,  22,  87, 163, 243,
+            92, 137, 236, 134,  38,  62, 206,  20,  22
+         ]
+    ));
 const token = new SolanaWeb3.PublicKey('A8CfmRr3feTenFrDDWKjhdRRe4pUCeTkojKoqwr1PX1Z');
-let poolAccount = new SolanaWeb3.PublicKey('FYCdRjZ8oGWA988cC62Hfx7CisYizry19G9qe1RZ73xJ')
+let poolAccount = new SolanaWeb3.PublicKey('BLra3o71eSkhrDgmpEeUSptkP5f7QFEd2mLKVHhcjRiJ')
 async function createPoolAccount() {
 
     
-    const seedValue = token.toBase58().slice(0,8)
+    const seedValue = token.toBase58().slice(0,10)
     const poolAccount = await SolanaWeb3.PublicKey.createWithSeed(
         FeePayerAccount.publicKey,
         seedValue,
@@ -99,7 +110,7 @@ async function createPoolAccount() {
         total_stakes: [],
         total_liquidity: 0,
         available_rewards: 0,
-        owner:FeePayerAccount.publicKey.toBase58()
+        owner:FeePayerAccount.publicKey.toString()
     });
 
 
@@ -120,7 +131,7 @@ async function createPoolAccount() {
             space: pool_serialize.length *4,
             programId:ProgramId
         })
-        transaction.add(createPoolAccount);
+        transaction.add(createPoolAccount)
     }
     
 
@@ -268,14 +279,37 @@ async function claimRewards() {
 
 async function addLiquidity() {
     
+
+
+
+// Example input (numeric value to be passed)
+const liquidityData = 123n; // Use BigInt for u64 values in TypeScript
+
+// Convert the BigInt to a 8-byte Little-Endian array
+const bufferValue = Buffer.alloc(8);
+bufferValue.writeBigUInt64LE(liquidityData);
+    const liquidity_keypair = SolanaWeb3.Keypair.fromSecretKey(new Uint8Array(
+        [
+            15,  21, 249,   9,  40,  97, 105, 179, 107,  98, 181,
+            61, 148, 189,  53, 125, 246, 100, 132, 132, 196, 203,
+            65, 180, 210, 109,  10, 199,  27,  71,  19,  43,  41,
+           112, 226,   4,  41,  21,  12,  48, 246, 196, 107, 195,
+            38, 143, 230, 105, 205, 185, 171,  22,  87, 163, 243,
+            92, 137, 236, 134,  38,  62, 206,  20,  22
+         ]
+    ));
+   
+    const admin_token_account = await SplToken.getAssociatedTokenAddress(token, FeePayerAccount.publicKey);
+    const liquidity_token_account = await SplToken.getAssociatedTokenAddress(token, liquidity_keypair.publicKey)
     const transactionInstruction = new SolanaWeb3.TransactionInstruction({
         keys:[
             { pubkey:FeePayerAccount.publicKey, isSigner:true, isWritable:true},
-            { pubkey:staker_account.publicKey, isSigner:true, isWritable:true},
+            { pubkey: admin_token_account, isSigner:false, isWritable:true},
+            { pubkey:liquidity_token_account, isSigner:false, isWritable:true},
             { pubkey:poolAccount, isSigner:false, isWritable:true},
-            {pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
+            { pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
         ],
-        data: Buffer.from([5,...Buffer.from([100])]),
+        data: Buffer.from([5,...bufferValue]),
         programId: ProgramId
     })
 
@@ -289,14 +323,20 @@ async function addLiquidity() {
 
 async function removeLiquidity() {
     
+   
+    const admin_token_account = await SplToken.getAssociatedTokenAddress(token, FeePayerAccount.publicKey);
+    const liquidity_token_account = await SplToken.getAssociatedTokenAddress(token, liquidity_keypair.publicKey)
+    
     const transactionInstruction = new SolanaWeb3.TransactionInstruction({
         keys:[
-            { pubkey:staker_account.publicKey, isSigner:true, isWritable:true},
-            { pubkey:FeePayerAccount.publicKey, isSigner:true, isWritable:true},
+            { pubkey: liquidity_keypair.publicKey, isSigner:true, isWritable:true},
+            { pubkey: FeePayerAccount.publicKey, isSigner: true, isWritable:true},
+            { pubkey:liquidity_token_account, isSigner:false, isWritable:true},
+            { pubkey:admin_token_account, isSigner:false, isWritable:true},
             { pubkey:poolAccount, isSigner:false, isWritable:true},
             {pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
         ],
-        data: Buffer.from([6,...Buffer.from([100])]),
+        data: Buffer.from([6,...Buffer.from([])]),
         programId: ProgramId
     })
 
@@ -304,26 +344,25 @@ async function removeLiquidity() {
         feePayer:FeePayerAccount.publicKey
     });
     transaction.add(transactionInstruction);
-    const signature = await SolanaWeb3.sendAndConfirmTransaction(connection, transaction,[FeePayerAccount]);
+    const signature = await SolanaWeb3.sendAndConfirmTransaction(connection, transaction,[FeePayerAccount, liquidity_keypair]);
     console.log("signature", signature)
 }
 
 async function getPoolData() {
     const seedValue = "ShamlaTech0.13680839071668616";
     const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com","confirmed")
-    const matchAccount = new SolanaWeb3.PublicKey('2wGVQLGpSDdTQze8uScPAdGC19rAa56nyphcv3eWJZ57');
-    const accountData = await connection.getAccountInfoAndContext(matchAccount);
+    const accountData = await connection.getAccountInfoAndContext(poolAccount);
     if(accountData.value){
         console.log(deserialize(schema,accountData.value?.data,false))
     }
     
 }
 
-console.log(SolanaWeb3.Keypair.generate())
+// console.log(SolanaWeb3.Keypair.generate())
 
 // createPoolAccount();
 // getPoolData();
 // stakeTokens(1000,30);
 //unstakeTokens();
 // addLiquidity();
-// removeLiquidity();
+removeLiquidity();
