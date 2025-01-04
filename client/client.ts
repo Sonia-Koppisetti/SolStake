@@ -63,7 +63,7 @@ const schema = {
     }
 }
 
-const ProgramId = new SolanaWeb3.PublicKey('GZEcmMaW8dsGgcYtCVcDBrLijYWFQDbWdnNjDruPHqqE')
+const ProgramId = new SolanaWeb3.PublicKey('D2saSiZ4aDhfoG8pSJFnmTqtN1vmcRRZFCwQtDMkTSNX')
 const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'confirmed')
     const FeePayerAccount = SolanaWeb3.Keypair.fromSecretKey(new Uint8Array(
         
@@ -90,8 +90,10 @@ const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'co
             92, 137, 236, 134,  38,  62, 206,  20,  22
          ]
     ));
-const token = new SolanaWeb3.PublicKey('A8CfmRr3feTenFrDDWKjhdRRe4pUCeTkojKoqwr1PX1Z');
-let poolAccount = new SolanaWeb3.PublicKey('BLra3o71eSkhrDgmpEeUSptkP5f7QFEd2mLKVHhcjRiJ')
+    const pdaAccouunt = new SolanaWeb3.PublicKey('DEEAQTGfRzpQvWyuSb74TxjR5Rp17NPmfPzsbiDnAHy8');
+    const program_token_account = new SolanaWeb3.PublicKey('D9q1pUrDWRXkHcUpgDZkdpBRAz1GuryEFpgp7ktWK6j5');
+    const token = new SolanaWeb3.PublicKey('A8CfmRr3feTenFrDDWKjhdRRe4pUCeTkojKoqwr1PX1Z');
+    let poolAccount = new SolanaWeb3.PublicKey('771Z9JgS27ZGT2yTzuAk6sLZ87Rn59hkDPgaR8Dx1bqe')
 async function createPoolAccount() {
 
     
@@ -146,7 +148,7 @@ async function createPoolAccount() {
 
             },
             {
-                pubkey:poolAccount,isSigner: false, isWritable:false
+                pubkey:poolAccount,isSigner: false, isWritable:true
 
             },{
                 pubkey:ProgramId, isSigner:false, isWritable:true
@@ -175,14 +177,14 @@ async function stakeTokens(amount:number, duration:number) {
     const staker_token_account = await SplToken.getAssociatedTokenAddress(token,staker_account.publicKey);
     // const crete_admin_token_account = await SplToken.createAssociatedTokenAccount(connection,FeePayerAccount, token,FeePayerAccount.publicKey);
     // const create_staker_token_account = await SplToken.createAssociatedTokenAccount(connection, FeePayerAccount,token, staker_account.publicKey);
-    const mint_tokens = await SplToken.mintTo(connection, FeePayerAccount,token, staker_token_account,FeePayerAccount,50000000000)
+    // const mint_tokens = await SplToken.mintTo(connection, FeePayerAccount,token, staker_token_account,FeePayerAccount,50000000000)
     let stake_amount_data = new StakeAmountData({
         amount:amount,
         duration:duration,
         user:staker_account.publicKey.toBase58(),
         starts_at:Date.now()
     })
-    new SolanaWeb3.PublicKey('')
+    // new SolanaWeb3.PublicKey('')
 
     let stake_amount_data_serialize  = serialize(stakeSchema,stake_amount_data);
     
@@ -191,7 +193,7 @@ async function stakeTokens(amount:number, duration:number) {
             {pubkey:staker_account.publicKey, isSigner:true, isWritable:true},
             {pubkey:poolAccount, isSigner:false, isWritable:true},
             {pubkey:staker_token_account, isSigner:false, isWritable:true},
-            {pubkey:admin_token_account, isSigner:false, isWritable:true},
+            {pubkey:program_token_account, isSigner:false, isWritable:true},
             {pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false},
             {pubkey:token, isSigner:false, isWritable:false}
         ],
@@ -218,18 +220,21 @@ async function unstakeTokens() {
     )
     const admin_token_account = await SplToken.getAssociatedTokenAddress(token,FeePayerAccount.publicKey);
     const staker_token_account = await SplToken.getAssociatedTokenAddress(token,staker_account.publicKey);
+    const seed = Buffer.from('shamla');
+
+    const [pda, bump ] = SolanaWeb3.PublicKey.findProgramAddressSync([seed], ProgramId);
     
     let transactionInstruction  = new SolanaWeb3.TransactionInstruction({
         keys:[
             {pubkey:staker_account.publicKey, isSigner:true, isWritable:true},
             
             {pubkey:staker_token_account, isSigner:false, isWritable:true},
-            {pubkey:FeePayerAccount.publicKey, isSigner:true, isWritable:true},
-            {pubkey:admin_token_account, isSigner:false, isWritable:true},
+            {pubkey:pdaAccouunt, isSigner:false, isWritable:true},
+            {pubkey:program_token_account, isSigner:false, isWritable:true},
             {pubkey:poolAccount, isSigner:false, isWritable:true},
             {pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
         ],
-        data: Buffer.from([3,...[]]),
+        data: Buffer.from([3,...Buffer.from(Uint8Array.of(bump))]),
         programId:ProgramId
     })
     const transaction = new SolanaWeb3.Transaction({
@@ -305,7 +310,7 @@ bufferValue.writeBigUInt64LE(liquidityData);
         keys:[
             { pubkey:FeePayerAccount.publicKey, isSigner:true, isWritable:true},
             { pubkey: admin_token_account, isSigner:false, isWritable:true},
-            { pubkey:liquidity_token_account, isSigner:false, isWritable:true},
+            { pubkey:program_token_account, isSigner:false, isWritable:true},
             { pubkey:poolAccount, isSigner:false, isWritable:true},
             { pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
         ],
@@ -325,18 +330,22 @@ async function removeLiquidity() {
     
    
     const admin_token_account = await SplToken.getAssociatedTokenAddress(token, FeePayerAccount.publicKey);
-    const liquidity_token_account = await SplToken.getAssociatedTokenAddress(token, liquidity_keypair.publicKey)
+    const liquidity_token_account = await SplToken.getAssociatedTokenAddress(token, liquidity_keypair.publicKey);
+
+    const seed = Buffer.from('shamla');
+
+    const [pda, bump ] = SolanaWeb3.PublicKey.findProgramAddressSync([seed], ProgramId);
     
     const transactionInstruction = new SolanaWeb3.TransactionInstruction({
         keys:[
-            { pubkey: liquidity_keypair.publicKey, isSigner:true, isWritable:true},
+            { pubkey: pdaAccouunt, isSigner:false, isWritable:true},
             { pubkey: FeePayerAccount.publicKey, isSigner: true, isWritable:true},
-            { pubkey:liquidity_token_account, isSigner:false, isWritable:true},
-            { pubkey:admin_token_account, isSigner:false, isWritable:true},
-            { pubkey:poolAccount, isSigner:false, isWritable:true},
-            {pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
+            { pubkey: program_token_account, isSigner:false, isWritable:true},
+            { pubkey: admin_token_account, isSigner:false, isWritable:true},
+            { pubkey: poolAccount, isSigner:false, isWritable:true},
+            { pubkey: SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false}
         ],
-        data: Buffer.from([6,...Buffer.from([])]),
+        data: Buffer.from([6,...Buffer.from(Uint8Array.of(bump))]),
         programId: ProgramId
     })
 
@@ -344,7 +353,7 @@ async function removeLiquidity() {
         feePayer:FeePayerAccount.publicKey
     });
     transaction.add(transactionInstruction);
-    const signature = await SolanaWeb3.sendAndConfirmTransaction(connection, transaction,[FeePayerAccount, liquidity_keypair]);
+    const signature = await SolanaWeb3.sendAndConfirmTransaction(connection, transaction,[FeePayerAccount]);
     console.log("signature", signature)
 }
 
@@ -358,11 +367,23 @@ async function getPoolData() {
     
 }
 
+async function createPDAAccount() {
+    const seed = Buffer.from('shamla');
+
+    const [pda, bump ] = SolanaWeb3.PublicKey.findProgramAddressSync([seed], ProgramId);
+
+    console.log('PDA: ', pda.toString())
+
+    const pdaTokenAccount = await SplToken.createAssociatedTokenAccount(connection, FeePayerAccount, token, pda,undefined, undefined, undefined, true);
+    console.log(pdaTokenAccount)
+}
+
 // console.log(SolanaWeb3.Keypair.generate())
 
 // createPoolAccount();
 // getPoolData();
 // stakeTokens(1000,30);
-//unstakeTokens();
+// unstakeTokens();
 // addLiquidity();
 removeLiquidity();
+// createPDAAccount();
