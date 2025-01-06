@@ -190,7 +190,7 @@ async function stakeTokens(amount:number, duration:number) {
     
     let transactionInstruction  = new SolanaWeb3.TransactionInstruction({
         keys:[
-            {pubkey:staker_account.publicKey, isSigner:true, isWritable:true},
+            {pubkey:staker_account.publicKey, isSigner:false, isWritable:true},
             {pubkey:poolAccount, isSigner:false, isWritable:true},
             {pubkey:staker_token_account, isSigner:false, isWritable:true},
             {pubkey:program_token_account, isSigner:false, isWritable:true},
@@ -227,7 +227,6 @@ async function unstakeTokens() {
     let transactionInstruction  = new SolanaWeb3.TransactionInstruction({
         keys:[
             {pubkey:staker_account.publicKey, isSigner:true, isWritable:true},
-            
             {pubkey:staker_token_account, isSigner:false, isWritable:true},
             {pubkey:pdaAccouunt, isSigner:false, isWritable:true},
             {pubkey:program_token_account, isSigner:false, isWritable:true},
@@ -326,6 +325,7 @@ bufferValue.writeBigUInt64LE(liquidityData);
     console.log("signature", signature)
 }
 
+
 async function removeLiquidity() {
     
    
@@ -385,5 +385,8 @@ async function createPDAAccount() {
 // stakeTokens(1000,30);
 // unstakeTokens();
 // addLiquidity();
-removeLiquidity();
-// createPDAAccount();
+// removeLiquidity();
+// createPDAAccount(); //I have already created
+// claimRewards();
+
+//completed the program using PDA account interactions.
