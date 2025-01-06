@@ -32,12 +32,14 @@ class StakeAmountData {
     duration:number;
     user:string;
     starts_at: number;
+    rewards_claimed_upto: number;
 
-    constructor(fields:{amount: number, duration:number, user:string, starts_at:number}){
+    constructor(fields:{amount: number, duration:number, user:string, starts_at:number, rewards_claimed_upto:number}){
         this.amount = fields.amount;
         this.duration = fields.duration;
         this.user = fields.user;
         this.starts_at = fields.starts_at;
+        this.rewards_claimed_upto = fields.rewards_claimed_upto;
     }
 }
 
@@ -46,7 +48,8 @@ const stakeSchema = {
         amount : 'u64',
         duration: 'u8',
         user:'string',
-        starts_at: 'i64'
+        starts_at: 'i64',
+        rewards_claimed_upto:'u8'
     }
 }
 
@@ -63,7 +66,7 @@ const schema = {
     }
 }
 
-const ProgramId = new SolanaWeb3.PublicKey('D2saSiZ4aDhfoG8pSJFnmTqtN1vmcRRZFCwQtDMkTSNX')
+const ProgramId = new SolanaWeb3.PublicKey('5D9FbUSqzLNd9yKLFaNqbJxWxQYdttRQxVBtkbiQ2J7k')
 const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'confirmed')
     const FeePayerAccount = SolanaWeb3.Keypair.fromSecretKey(new Uint8Array(
         
@@ -90,10 +93,10 @@ const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'co
             92, 137, 236, 134,  38,  62, 206,  20,  22
          ]
     ));
-    const pdaAccouunt = new SolanaWeb3.PublicKey('DEEAQTGfRzpQvWyuSb74TxjR5Rp17NPmfPzsbiDnAHy8');
-    const program_token_account = new SolanaWeb3.PublicKey('D9q1pUrDWRXkHcUpgDZkdpBRAz1GuryEFpgp7ktWK6j5');
+    const pdaAccouunt = new SolanaWeb3.PublicKey('4tUzU3GubcLXmEzrbraMsCguJzANBFnKar7XSXw6Gxtk');
+    const program_token_account = new SolanaWeb3.PublicKey('8y9919AfnhjeMopf4vRA2HeK5baockp6mUJ3gf3jgCTk');
     const token = new SolanaWeb3.PublicKey('A8CfmRr3feTenFrDDWKjhdRRe4pUCeTkojKoqwr1PX1Z');
-    let poolAccount = new SolanaWeb3.PublicKey('771Z9JgS27ZGT2yTzuAk6sLZ87Rn59hkDPgaR8Dx1bqe')
+    let poolAccount = new SolanaWeb3.PublicKey('GTVJwTPpjSQd9AZEzd6aNVt4VkWGYL2esozXP8fxzaLV')
 async function createPoolAccount() {
 
     
@@ -182,7 +185,8 @@ async function stakeTokens(amount:number, duration:number) {
         amount:amount,
         duration:duration,
         user:staker_account.publicKey.toBase58(),
-        starts_at:Date.now()
+        starts_at:Date.now(),
+        rewards_claimed_upto:0
     })
     // new SolanaWeb3.PublicKey('')
 
@@ -374,8 +378,9 @@ async function createPDAAccount() {
 
     console.log('PDA: ', pda.toString())
 
-    const pdaTokenAccount = await SplToken.createAssociatedTokenAccount(connection, FeePayerAccount, token, pda,undefined, undefined, undefined, true);
-    console.log(pdaTokenAccount)
+    // const pdaTokenAccount = await SplToken.createAssociatedTokenAccount(connection, FeePayerAccount, token, pda,undefined, undefined, undefined, true);
+    console.log("get associated token account", await SplToken.getAssociatedTokenAddress(token,pda,true))
+    // console.log(pdaTokenAccount)
 }
 
 // console.log(SolanaWeb3.Keypair.generate())
@@ -387,6 +392,6 @@ async function createPDAAccount() {
 // addLiquidity();
 // removeLiquidity();
 // createPDAAccount(); //I have already created
-// claimRewards();
+claimRewards();
 
 //completed the program using PDA account interactions.

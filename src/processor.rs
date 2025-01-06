@@ -172,7 +172,7 @@ pub fn claim_rewards(
                     // Successfully found the user's stake
                     let mut current_user_stake =
                         pool_data.total_stakes[current_user_stake_index].clone();
-                    current_user_stake.rewards_claimed_upto = index;
+                    current_user_stake.rewards_claimed_upto = index as u8;
                     // if current_user_stake.amount != 0 {
                     // Remove the user's stake
                     pool_data.total_stakes.remove(current_user_stake_index);
@@ -188,7 +188,7 @@ pub fn claim_rewards(
                 }
             }
 
-            user_data.rewards_claimed_upto = index;
+            user_data.rewards_claimed_upto = index as u8;
             transfer_tokens(
                 &[
                     admin_token_account.clone(),

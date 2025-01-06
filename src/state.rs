@@ -18,5 +18,5 @@ pub struct StakeAmount {
     pub duration: u8,
     pub user: String,
     pub starts_at: i64,
-    pub rewards_claimed_upto: usize,
+    pub rewards_claimed_upto: u8,
 }
