@@ -127,11 +127,11 @@ fn nearest_index(array: &[u64], value: u64) -> Option<usize> {
 pub fn claim_rewards(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _instruction_data: &[u8],
+    instruction_data: &[u8],
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
-    let admin_account = next_account_info(accounts_iter)?;
-    let admin_token_account = next_account_info(accounts_iter)?;
+    let pda_account = next_account_info(accounts_iter)?;
+    let program_token_account = next_account_info(accounts_iter)?;
     let staker_token_account = next_account_info(accounts_iter)?;
     let token_program_id = next_account_info(accounts_iter)?;
     let pool_account = next_account_info(accounts_iter)?;
@@ -189,15 +189,20 @@ pub fn claim_rewards(
             }
 
             user_data.rewards_claimed_upto = index as u8;
-            transfer_tokens(
+
+            let bump_seed = instruction_data[0];
+            // Perform the token transfer
+            transfer_tokens_from_pda(
                 &[
-                    admin_token_account.clone(),
+                    program_token_account.clone(),
                     staker_token_account.clone(),
                     token_program_id.clone(),
-                    admin_account.clone(),
+                    pda_account.clone(),
                 ],
                 reward_amount,
-            )?;
+                bump_seed,
+            )
+            .expect("transfer tokens error");
 
             // Reduce the available rewards in the pool
             pool_data.available_rewards -= reward_amount;
