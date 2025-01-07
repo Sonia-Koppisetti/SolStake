@@ -66,7 +66,7 @@ const schema = {
     }
 }
 
-const ProgramId = new SolanaWeb3.PublicKey('5D9FbUSqzLNd9yKLFaNqbJxWxQYdttRQxVBtkbiQ2J7k')
+const ProgramId = new SolanaWeb3.PublicKey('BcFEM7BEJNC64Gy599QeRpKgrb3JHEEh4GdjqRcEhp6U')
 const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'confirmed')
     const FeePayerAccount = SolanaWeb3.Keypair.fromSecretKey(new Uint8Array(
         
@@ -93,10 +93,10 @@ const connection = new SolanaWeb3.Connection("https://api.devnet.solana.com",'co
             92, 137, 236, 134,  38,  62, 206,  20,  22
          ]
     ));
-    const pdaAccouunt = new SolanaWeb3.PublicKey('4tUzU3GubcLXmEzrbraMsCguJzANBFnKar7XSXw6Gxtk');
-    const program_token_account = new SolanaWeb3.PublicKey('8y9919AfnhjeMopf4vRA2HeK5baockp6mUJ3gf3jgCTk');
+    const pdaAccouunt = new SolanaWeb3.PublicKey('HUZ9GKtjwEb9MBDUzX896vuy53KcKKpfD9vD8fBYKz1K');
+    const program_token_account = new SolanaWeb3.PublicKey('GqoyDWeDghNzdxdRsex5oKRLUw6E5hsRymg8xSnJEf8L');
     const token = new SolanaWeb3.PublicKey('A8CfmRr3feTenFrDDWKjhdRRe4pUCeTkojKoqwr1PX1Z');
-    let poolAccount = new SolanaWeb3.PublicKey('GTVJwTPpjSQd9AZEzd6aNVt4VkWGYL2esozXP8fxzaLV')
+    let poolAccount = new SolanaWeb3.PublicKey('Eu26cpAyNFoLwhZgu6nDAjT6bWaNbHewGtGHBhUMQUxg')
 async function createPoolAccount() {
 
     
@@ -106,6 +106,8 @@ async function createPoolAccount() {
         seedValue,
         ProgramId
     )
+
+    console.log("Pool Account", poolAccount.toBase58())
 
     const poolData = new PoolData({
         id: '1',
@@ -263,8 +265,8 @@ async function claimRewards() {
    
    let transactionInstruction  = new SolanaWeb3.TransactionInstruction({
        keys:[
-        {pubkey:FeePayerAccount.publicKey, isSigner:true, isWritable:true},
-        {pubkey:admin_token_account, isSigner:false, isWritable:true},
+        {pubkey:pdaAccouunt, isSigner:false, isWritable:true},
+        {pubkey:program_token_account, isSigner:false, isWritable:true},
         {pubkey:staker_token_account, isSigner:false, isWritable:true},
            
            {pubkey:SplToken.TOKEN_PROGRAM_ID, isSigner:false, isWritable:false},
@@ -378,9 +380,9 @@ async function createPDAAccount() {
 
     console.log('PDA: ', pda.toString())
 
-    // const pdaTokenAccount = await SplToken.createAssociatedTokenAccount(connection, FeePayerAccount, token, pda,undefined, undefined, undefined, true);
-    console.log("get associated token account", await SplToken.getAssociatedTokenAddress(token,pda,true))
-    // console.log(pdaTokenAccount)
+    const pdaTokenAccount = await SplToken.createAssociatedTokenAccount(connection, FeePayerAccount, token, pda,undefined, undefined, undefined, true);
+    // console.log("get associated token account", await SplToken.getAssociatedTokenAddress(token,pda,true))
+    console.log(pdaTokenAccount)
 }
 
 // console.log(SolanaWeb3.Keypair.generate())
@@ -392,6 +394,6 @@ async function createPDAAccount() {
 // addLiquidity();
 // removeLiquidity();
 // createPDAAccount(); //I have already created
-claimRewards();
+// claimRewards();
 
 //completed the program using PDA account interactions.
